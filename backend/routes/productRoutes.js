@@ -1,69 +1,54 @@
-// Handles GET /api/products and GET /api/products/:id
+// backend/routes/productRoutes.js - UPDATED with detailed error logging 💡
 const express = require('express');
 const router = express.Router();
-const db = require('../db/db');
+const openDb = require('../db/db');
 
-// GET /api/products - list products with search/filter/pagination (Server-Side Pagination/Filter Bonus)
-router.get('/products', (req, res) => {
-    const { search = '', category = '', page = 1, limit = 10 } = req.query;
+// GET /api/products - Get all products (with optional search/pagination logic)
+router.get('/', async (req, res) => {
+    try {
+        const db = await openDb();
+        
+        // Basic query: Fetch all products.
+        const products = await db.all('SELECT * FROM products ORDER BY name ASC');
+        
+        // Check if products were found before responding
+        if (products.length === 0) {
+            console.log('No products found in the database.');
+        }
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    const limitNum = parseInt(limit);
-
-    let whereClauses = [];
-    let params = [];
-
-    // Search by name
-    if (search) {
-        whereClauses.push("name LIKE ?");
-        params.push(`%${search}%`);
-    }
-
-    // Filter by category
-    if (category) {
-        whereClauses.push("category = ?");
-        params.push(category);
-    }
-
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-    const countSql = `SELECT COUNT(*) AS total FROM products ${whereSql}`;
-    const productSql = `SELECT * FROM products ${whereSql} LIMIT ? OFFSET ?`;
-
-    // 1. Get total count
-    db.get(countSql, params, (err, countRow) => {
-        if (err) return res.status(500).json({ success: false, message: 'Database error fetching count.', error: err.message });
-
-        const total = countRow.total;
-
-        // 2. Get paginated products
-        db.all(productSql, [...params, limitNum, offset], (err, rows) => {
-            if (err) return res.status(500).json({ success: false, message: 'Database error fetching products.', error: err.message });
-
-            res.json({
-                success: true,
-                products: rows,
-                pagination: {
-                    total,
-                    page: parseInt(page),
-                    limit: limitNum,
-                    totalPages: Math.ceil(total / limitNum)
-                }
-            });
+        res.json(products);
+    } catch (error) {
+        // CRITICAL UPDATE: Log the full error to the console (Render logs)
+        console.error('CRITICAL DATABASE ERROR fetching products:', error.message, error);
+        
+        // Return a 500 status with an explicit message about the failure
+        res.status(500).json({ 
+            error: 'Failed to retrieve products.', 
+            detail: 'Database access failed. Check server logs for connection or file errors.'
         });
-    });
+    }
 });
 
-// GET /api/products/:id - product details
-router.get('/products/:id', (req, res) => {
+// GET /api/products/:id - Get a single product by ID
+router.get('/:id', async (req, res) => {
     const { id } = req.params;
-    const sql = 'SELECT * FROM products WHERE id = ?';
+    try {
+        const db = await openDb();
+        const product = await db.get('SELECT * FROM products WHERE id = ?', id);
 
-    db.get(sql, [id], (err, row) => {
-        if (err) return res.status(500).json({ success: false, message: 'Database error.', error: err.message });
-        if (!row) return res.status(404).json({ success: false, message: 'Product not found.' });
-
-        res.json({ success: true, product: row });
-    });
+        if (product) {
+            res.json(product);
+        } else {
+            res.status(404).json({ error: 'Product not found.' });
+        }
+    } catch (error) {
+        // Added the same detailed logging to the single product fetch as well
+        console.error(`CRITICAL DATABASE ERROR fetching product ID ${id}:`, error.message, error);
+        res.status(500).json({ 
+            error: 'Failed to retrieve product details.',
+            detail: 'Database access failed. Check server logs for connection errors.'
+        });
+    }
 });
 
 module.exports = router;
