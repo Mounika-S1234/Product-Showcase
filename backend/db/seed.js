@@ -1,23 +1,12 @@
-// This file executes the schema and seeds data into the SQLite database.
+// backend/db/seed.js - UPDATED for PostgreSQL
 require('dotenv').config({ path: '../.env' });
-const sqlite3 = require('sqlite3').verbose();
+const db = require('./db'); // Now imports the PostgreSQL wrapper
 const fs = require('fs');
 const path = require('path');
 
-const dbPath = path.resolve(__dirname, '..', process.env.DB_FILE || 'product_showcase.db');
-
-// Connect (or create) the database file
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-    if (err) {
-        console.error('Database connection error:', err.message);
-    } else {
-        console.log(`Connected to the SQLite database at ${dbPath}`);
-        runSeed();
-    }
-});
-
 const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 
+// The sample data remains the same, but the DB must be PostgreSQL
 const sampleDataSql = `
 -- Sample product data
 INSERT INTO products (name, category, short_desc, long_desc, price, image_url) VALUES
@@ -29,28 +18,22 @@ INSERT INTO products (name, category, short_desc, long_desc, price, image_url) V
 ('Smart Watch Pro', 'Electronics', 'Fitness tracking, heart rate monitor, and notifications.', 'Always-on AMOLED display, GPS tracking, and up to 10 days of battery life. Water resistant.', 249.00, '/images/watch.jpg');
 `;
 
-function runSeed() {
-    db.serialize(() => {
-        // Run schema setup
-        db.exec(schemaSql, (err) => {
-            if (err) {
-                console.error("Schema creation failed:", err.message);
-            } else {
-                console.log("Schema created successfully.");
+async function runSeed() {
+    try {
+        console.log('Starting schema creation...');
+        // Executing schema (PostgreSQL handles multiple statements)
+        await db.exec(schemaSql);
+        console.log("Schema created successfully.");
 
-                // Run seed data
-                db.exec(sampleDataSql, (err) => {
-                    if (err) {
-                        console.error("Data seeding failed:", err.message);
-                    } else {
-                        console.log("Database successfully seeded with sample products.");
-                    }
-                    db.close((closeErr) => {
-                        if (closeErr) console.error("Error closing DB:", closeErr.message);
-                        else console.log("Database connection closed.");
-                    });
-                });
-            }
-        });
-    });
+        // Executing seed data
+        await db.exec(sampleDataSql);
+        console.log("Database successfully seeded with sample products.");
+
+    } catch (error) {
+        console.error('Database seeding failed:', error.message);
+        // Throw error to ensure process exits on failure
+        throw error; 
+    }
 }
+
+runSeed();
